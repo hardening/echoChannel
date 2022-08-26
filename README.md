@@ -1,6 +1,9 @@
-# Server-side echo channel
+# Sample server-side RDP channels
 
-This is an implementation of the RDP ECHO channel. It has some neat options to test dynamic and static channels, sending
+This project contain various channel implementation, mainly for testing purpose against FreeRDP, but it can
+also be used to develop your own server-side channels.
+
+echoChannel is an implementation of the RDP ECHO channel. It has some neat options for sending
 a given amount of packet and then close the channel.
 
 ## Build

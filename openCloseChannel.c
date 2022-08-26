@@ -1,5 +1,5 @@
 /**
- *  Echo channel
+ *  OpenClose channel
  *
  * Copyright 2022 David Fort <contact@hardening-consulting.com>
  *
@@ -17,16 +17,15 @@
  */
 
 #include <stdio.h>
-
 #include "wts.h"
-
 
 /** @brief channel configuration */
 typedef struct {
     BOOL dynamic;
-    ULONG packetsLimit;
     DWORD sleepDelay;
-} EchoConfig;
+    char *channelName;
+} OpenCloseConfig;
+
 
 /**
  * @brief adjust the configuration from parameters
@@ -36,20 +35,20 @@ typedef struct {
  * @param config target configuration
  * @return if the function succeeded
  */
-static BOOL parseParameters(int argc, char **argv, EchoConfig *config) {
+static BOOL parseParameters(int argc, char **argv, OpenCloseConfig *config) {
     int i;
 
     config->dynamic = TRUE;
-    config->packetsLimit = ULONG_MAX;
-    config->sleepDelay = 100;
+    config->sleepDelay = 10;
+    config->channelName = NULL;
 
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-static") == 0) {
             config->dynamic = FALSE;
         }
-        else if(strstr(argv[i], "--packets=") == argv[i]) {
-            char *str = argv[i] + strlen("--packets=");
-            config->packetsLimit = atol(str);
+        else if(strstr(argv[i], "--name=") == argv[i]) {
+            char *str = argv[i] + strlen("--name=");
+            config->channelName = str;
         }
         else if(strstr(argv[i], "--sleepDelay=") == argv[i]) {
             char *str = argv[i] + strlen("--sleepDelay=");
@@ -59,28 +58,28 @@ static BOOL parseParameters(int argc, char **argv, EchoConfig *config) {
             return FALSE;
     }
 
+    if (!config->channelName || !strlen(config->channelName)) {
+        printf("ERROR: missing or empty channel name\n");
+        return FALSE;
+    }
     return TRUE;
 }
 
 static void printHelp(const char *argv0) {
-    printf("usage: %s [-static] [-doReads] [--packets=<nb>] [--sleepDelay=<milli>]\n", argv0);
-    printf("\t-static: opens the echo channel as static channel(default: no)\n");
-    printf("\t--packets=<nb>: sends <nb> packets and then close the channel (default: infinite)\n");
-    printf("\t--sleepDelay=<milli>: wait <milli> milliseconds between each packet sending (default: 100ms)\n");
+    printf("usage: %s --name=<name> [-static] [--sleepDelay=<milli>]\n", argv0);
+    printf("\t-static: opens the channel as a static channel(default: no)\n");
+    printf("\t--name=<name>: channel name\n");
+    printf("\t--sleepDelay=<delay>: wait <delay> seconds before closing the channel (default: 10s)\n");
 }
 
 typedef struct {
     HANDLE hChannel;
-    HANDLE fileHandle;
-    ULONG sentBytes;
-} EchoState;
+} OpenCloseState;
 
 int main(int argc, char **argv) {
-    ULONG i;
-    BYTE payload = 0;
     WTSApi wtsapi;
-    EchoConfig config;
-    EchoState state = { 0 };
+    OpenCloseConfig config;
+    OpenCloseState state = { 0 };
     DWORD flags;
 
     if (!parseParameters(argc, argv, &config)) {
@@ -96,28 +95,14 @@ int main(int argc, char **argv) {
     if (config.dynamic)
         flags = WTS_CHANNEL_OPTION_DYNAMIC;
 
-    state.hChannel = wtsapi.WTSVirtualChannelOpenEx(WTS_CURRENT_SESSION, "ECHO", flags);
+    state.hChannel = wtsapi.WTSVirtualChannelOpenEx(WTS_CURRENT_SESSION, config.channelName, flags);
     if (!state.hChannel) {
         fprintf(stderr, "unable to open the channel (GetLastError() = %ld)\n", GetLastError());
         return -3;
     }
 
-    for (i = 0; i < config.packetsLimit; i++) {
-        ULONG ulBytesWritten;
-
-        BOOL bSuccess = wtsapi.WTSVirtualChannelWrite(state.hChannel, (PCHAR)&payload, 1, &ulBytesWritten);
-        if (!bSuccess) {
-            fprintf(stderr, "WTSVirtualChannelWrite failed (GetLastError() = %ld)\n",
-                    GetLastError());
-            break;
-        }
-        state.sentBytes += ulBytesWritten;
-        payload++;
-
-        if (config.sleepDelay)
-            Sleep(config.sleepDelay);
-    }
+    Sleep(config.sleepDelay * 1000);
 
     wtsapi.WTSVirtualChannelClose(state.hChannel);
-	return 0;
+    return 0;
 }
